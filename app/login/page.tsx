@@ -48,12 +48,6 @@ export default function LoginPage() {
     }
   }
 
-  // Mostrar credenciales de administrador para facilitar el inicio de sesión
-  const adminCredentials = {
-    email: "simonsantamaria.cv@gmail.com",
-    password: "Bianca1905",
-  }
-
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -111,25 +105,6 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
             </Button>
-
-            {/* Mostrar credenciales de administrador */}
-            <div className="mt-6 p-3 bg-gray-100 dark:bg-gray-800 rounded-md">
-              <p className="text-sm font-medium mb-2">Credenciales de administrador:</p>
-              <p className="text-xs">Email: {adminCredentials.email}</p>
-              <p className="text-xs">Contraseña: {adminCredentials.password}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2 w-full text-xs"
-                onClick={() => {
-                  setEmail(adminCredentials.email)
-                  setPassword(adminCredentials.password)
-                }}
-              >
-                Usar credenciales de administrador
-              </Button>
-            </div>
           </form>
         </CardContent>
       </Card>
