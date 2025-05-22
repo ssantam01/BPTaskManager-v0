@@ -25,6 +25,7 @@ export function UserManagement() {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   // Estados para el formulario
   const [name, setName] = useState("")
@@ -54,7 +55,7 @@ export function UserManagement() {
     setError("")
   }
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!name || !email || !password) {
       setError("Todos los campos son obligatorios")
       return
@@ -66,19 +67,32 @@ export function UserManagement() {
       return
     }
 
-    addUser({
-      name,
-      email,
-      password,
-      role: isAdmin ? "admin" : "user",
-      image: "/placeholder.svg?height=40&width=40",
-    })
+    setIsLoading(true)
+    try {
+      const newUser = await addUser({
+        name,
+        email,
+        password,
+        role: isAdmin ? "admin" : "user",
+        image: "/placeholder.svg?height=40&width=40",
+      })
 
-    resetForm()
-    setIsAddUserOpen(false)
+      if (newUser) {
+        console.log("Usuario añadido correctamente:", newUser)
+        resetForm()
+        setIsAddUserOpen(false)
+      } else {
+        setError("Error al crear el usuario. Inténtalo de nuevo.")
+      }
+    } catch (error) {
+      console.error("Error al añadir usuario:", error)
+      setError("Error al crear el usuario. Inténtalo de nuevo.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleUpdateUser = () => {
+  const handleUpdateUser = async () => {
     if (!editingUser) return
 
     if (!name || !email) {
@@ -92,31 +106,46 @@ export function UserManagement() {
       return
     }
 
-    const updates: Partial<User> = {
-      name,
-      email,
-      role: isAdmin ? "admin" : "user",
-    }
+    setIsLoading(true)
+    try {
+      const updates: Partial<User> = {
+        name,
+        email,
+        role: isAdmin ? "admin" : "user",
+      }
 
-    // Solo actualizar la contraseña si se proporciona una nueva
-    if (password) {
-      updates.password = password
-    }
+      // Solo actualizar la contraseña si se proporciona una nueva
+      if (password) {
+        updates.password = password
+      }
 
-    updateUser(editingUser.id, updates)
-    setEditingUser(null)
-    resetForm()
+      await updateUser(editingUser.id, updates)
+      setEditingUser(null)
+      resetForm()
+    } catch (error) {
+      console.error("Error al actualizar usuario:", error)
+      setError("Error al actualizar el usuario. Inténtalo de nuevo.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleDeleteUser = (userId: string) => {
-    deleteUser(userId)
+  const handleDeleteUser = async (userId: string) => {
+    setIsLoading(true)
+    try {
+      await deleteUser(userId)
+    } catch (error) {
+      console.error("Error al eliminar usuario:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-lg font-semibold">Gestión de Usuarios</h2>
-        <Button onClick={handleOpenAddUser}>
+        <Button onClick={handleOpenAddUser} disabled={isLoading}>
           <UserPlus className="h-4 w-4 mr-2" />
           Agregar Usuario
         </Button>
@@ -146,6 +175,7 @@ export function UserManagement() {
                     size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive/90"
                     onClick={() => handleDeleteUser(user.id)}
+                    disabled={isLoading}
                   >
                     <Trash2 className="h-4 w-4" />
                     <span className="sr-only">Eliminar usuario</span>
@@ -158,7 +188,7 @@ export function UserManagement() {
                 <span className="text-sm">
                   Rol: <span className="font-medium">{user.role === "admin" ? "Administrador" : "Usuario"}</span>
                 </span>
-                <Button variant="outline" size="sm" onClick={() => handleOpenEditUser(user)}>
+                <Button variant="outline" size="sm" onClick={() => handleOpenEditUser(user)} disabled={isLoading}>
                   <Pencil className="h-3 w-3 mr-1" />
                   Editar
                 </Button>
@@ -188,7 +218,13 @@ export function UserManagement() {
             )}
             <div className="grid gap-2">
               <Label htmlFor="name">Nombre</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre completo" />
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nombre completo"
+                disabled={isLoading}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
@@ -198,6 +234,7 @@ export function UserManagement() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="correo@ejemplo.com"
+                disabled={isLoading}
               />
             </div>
             <div className="grid gap-2">
@@ -208,19 +245,20 @@ export function UserManagement() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                disabled={isLoading}
               />
             </div>
             <div className="flex items-center space-x-2">
-              <Switch id="is-admin" checked={isAdmin} onCheckedChange={setIsAdmin} />
+              <Switch id="is-admin" checked={isAdmin} onCheckedChange={setIsAdmin} disabled={isLoading} />
               <Label htmlFor="is-admin">Es administrador</Label>
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleAddUser}>
-              Agregar Usuario
+            <Button type="button" onClick={handleAddUser} disabled={isLoading}>
+              {isLoading ? "Agregando..." : "Agregar Usuario"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -246,6 +284,7 @@ export function UserManagement() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Nombre completo"
+                disabled={isLoading}
               />
             </div>
             <div className="grid gap-2">
@@ -256,6 +295,7 @@ export function UserManagement() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="correo@ejemplo.com"
+                disabled={isLoading}
               />
             </div>
             <div className="grid gap-2">
@@ -266,19 +306,20 @@ export function UserManagement() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                disabled={isLoading}
               />
             </div>
             <div className="flex items-center space-x-2">
-              <Switch id="edit-is-admin" checked={isAdmin} onCheckedChange={setIsAdmin} />
+              <Switch id="edit-is-admin" checked={isAdmin} onCheckedChange={setIsAdmin} disabled={isLoading} />
               <Label htmlFor="edit-is-admin">Es administrador</Label>
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>
+            <Button type="button" variant="outline" onClick={() => setEditingUser(null)} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleUpdateUser}>
-              Guardar Cambios
+            <Button type="button" onClick={handleUpdateUser} disabled={isLoading}>
+              {isLoading ? "Guardando..." : "Guardar Cambios"}
             </Button>
           </DialogFooter>
         </DialogContent>

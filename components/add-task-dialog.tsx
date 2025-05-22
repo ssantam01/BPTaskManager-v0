@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -10,6 +12,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useTasks } from "@/lib/tasks-context"
 import { useAuth } from "@/lib/auth-context"
 import type { Priority } from "@/lib/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface AddTaskDialogProps {
   open: boolean
@@ -18,13 +22,32 @@ interface AddTaskDialogProps {
 
 export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
   const { addTask } = useTasks()
-  const { user, isAdmin } = useAuth()
+  const { user, users, isAdmin } = useAuth()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [link, setLink] = useState("")
   const [priority, setPriority] = useState<Priority>("media")
+  const [assignedTo, setAssignedTo] = useState<string | null>(null)
 
-  const handleSubmit = (e) => {
+  // Función para formatear el enlace correctamente
+  const formatLink = (link: string): string | null => {
+    if (!link || !link.trim()) return null
+
+    // Si ya tiene http:// o https://, dejarlo como está
+    if (link.match(/^https?:\/\//i)) {
+      return link
+    }
+
+    // Si parece una URL sin protocolo (comienza con www. o contiene un punto), añadir https://
+    if (link.match(/^www\./i) || link.includes(".")) {
+      return `https://${link}`
+    }
+
+    // Si no parece una URL, devolverlo tal cual
+    return link
+  }
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
     if (!title.trim() || !user?.id) return
@@ -32,9 +55,9 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
     addTask({
       title,
       description,
-      link: link.trim() ? link : null,
+      link: formatLink(link),
       createdBy: user.id,
-      assignedTo: null,
+      assignedTo: assignedTo, // Puede ser null o el ID de un usuario
       priority,
     })
 
@@ -43,6 +66,7 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
     setDescription("")
     setLink("")
     setPriority("media")
+    setAssignedTo(null)
     onOpenChange(false)
   }
 
@@ -83,11 +107,14 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
               <Label htmlFor="link">Enlace (opcional)</Label>
               <Input
                 id="link"
-                type="url"
+                type="text" // Cambiado de "url" a "text"
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
-                placeholder="https://ejemplo.com"
+                placeholder="ejemplo.com o https://ejemplo.com"
               />
+              {link && !link.match(/^https?:\/\//i) && link.includes(".") && (
+                <p className="text-xs text-muted-foreground">Se añadirá "https://" automáticamente al guardar</p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Prioridad</Label>
@@ -111,6 +138,31 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
                   </Label>
                 </div>
               </RadioGroup>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="assignTo">Asignar a (opcional)</Label>
+              <Select
+                value={assignedTo || ""}
+                onValueChange={(value) => setAssignedTo(value === "none" ? null : value)}
+              >
+                <SelectTrigger id="assignTo">
+                  <SelectValue placeholder="Sin asignar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin asignar</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={u.image || "/placeholder.svg?height=24&width=24"} alt={u.name || ""} />
+                          <AvatarFallback className="text-xs">{u.name?.charAt(0) || "U"}</AvatarFallback>
+                        </Avatar>
+                        <span>{u.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

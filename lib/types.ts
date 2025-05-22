@@ -1,4 +1,5 @@
 export type Priority = "baja" | "media" | "alta"
+export type TaskStatus = "pendiente" | "completada"
 
 export interface Task {
   id: number
@@ -10,6 +11,7 @@ export interface Task {
   createdAt: string
   priority: Priority
   lastAssignedAt?: string | null
+  status: TaskStatus
 }
 
 export interface User {

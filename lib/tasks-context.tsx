@@ -2,155 +2,243 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useAuth } from "@/lib/auth-context"
-import type { Task } from "@/lib/types"
+import type { Task, TaskStatus } from "@/lib/types"
+import { supabase, type DatabaseTask } from "@/lib/supabase"
 
 interface TasksContextType {
   availableTasks: Task[]
   assignedTasks: Task[]
-  addTask: (task: Omit<Task, "id" | "createdAt">) => void
-  assignTask: (taskId: number, userId: string | undefined) => void
-  unassignTask: (taskId: number) => void
-  deleteTask: (taskId: number) => void
-  clearAssignedTasks: () => void
+  completedTasks: Task[]
+  addTask: (task: Omit<Task, "id" | "createdAt" | "status">) => Promise<void>
+  assignTask: (taskId: number, userId: string | undefined) => Promise<void>
+  unassignTask: (taskId: number) => Promise<void>
+  deleteTask: (taskId: number) => Promise<void>
+  completeTask: (taskId: number) => Promise<void>
+  reopenTask: (taskId: number) => Promise<void>
+  clearAssignedTasks: () => Promise<void>
+  refreshTasks: () => Promise<void>
 }
 
 const TasksContext = createContext<TasksContextType | undefined>(undefined)
-
-const TASK_CLEANUP_KEY = "taskCleanupTimestamp"
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const { user } = useAuth()
 
-  // Cargar tareas del localStorage al iniciar
-  useEffect(() => {
-    const storedTasks = localStorage.getItem("tasks")
-    if (storedTasks) {
-      try {
-        // Convertir tareas antiguas al nuevo formato si es necesario
-        const parsedTasks = JSON.parse(storedTasks)
-        const updatedTasks = parsedTasks.map((task: any) => ({
-          ...task,
-          priority: task.priority || "media", // Valor por defecto para tareas antiguas
-          lastAssignedAt: task.lastAssignedAt || (task.assignedTo ? new Date().toISOString() : null),
-        }))
-        setTasks(updatedTasks)
-      } catch (error) {
-        console.error("Error parsing stored tasks:", error)
-        localStorage.removeItem("tasks")
-      }
-    } else {
-      // Tareas de ejemplo si no hay ninguna guardada
-      const exampleTasks: Task[] = [
-        {
-          id: 1,
-          title: "Actualizar documentación del proyecto",
-          description: "Revisar y actualizar la documentación técnica del proyecto principal",
-          link: "https://docs.google.com/document/example",
-          createdBy: "admin1",
-          assignedTo: null,
-          createdAt: new Date().toISOString(),
-          priority: "alta",
-        },
-        {
-          id: 2,
-          title: "Corregir errores en el formulario de contacto",
-          description: "El formulario no valida correctamente los campos de email y teléfono",
-          link: "https://github.com/example/repo/issues/123",
-          createdBy: "user1",
-          assignedTo: null,
-          createdAt: new Date().toISOString(),
-          priority: "media",
-        },
-        {
-          id: 3,
-          title: "Diseñar nueva página de inicio",
-          description: "Crear mockups para la nueva página de inicio según los requisitos del cliente",
-          link: "https://figma.com/file/example",
-          createdBy: "user2",
-          assignedTo: null,
-          createdAt: new Date().toISOString(),
-          priority: "baja",
-        },
-      ]
-      setTasks(exampleTasks)
-      localStorage.setItem("tasks", JSON.stringify(exampleTasks))
-    }
-  }, [])
+  // Función para convertir DatabaseTask a Task
+  const convertDatabaseTask = (dbTask: DatabaseTask): Task => ({
+    id: dbTask.id,
+    title: dbTask.title,
+    description: dbTask.description || "",
+    link: dbTask.link || null,
+    priority: dbTask.priority,
+    createdBy: dbTask.created_by,
+    assignedTo: dbTask.assigned_to || null,
+    createdAt: dbTask.created_at,
+    lastAssignedAt: dbTask.last_assigned_at || null,
+    status: (dbTask.status as TaskStatus) || "pendiente",
+  })
 
-  // Verificar si han pasado 24 horas desde la última limpieza
-  useEffect(() => {
-    if (!user?.id) return
+  // Cargar tareas desde Supabase
+  const loadTasks = async () => {
+    try {
+      const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false })
 
-    const checkAndCleanTasks = () => {
-      const lastCleanup = localStorage.getItem(`${TASK_CLEANUP_KEY}_${user.id}`)
-      const now = new Date().getTime()
-
-      if (!lastCleanup) {
-        // Primera vez, solo guardar el timestamp
-        localStorage.setItem(`${TASK_CLEANUP_KEY}_${user.id}`, now.toString())
+      if (error) {
+        console.error("Error loading tasks:", error)
         return
       }
 
-      const lastCleanupTime = Number.parseInt(lastCleanup)
-      const hoursPassed = (now - lastCleanupTime) / (1000 * 60 * 60)
-
-      if (hoursPassed >= 24) {
-        // Han pasado 24 horas, limpiar tareas asignadas a este usuario
-        setTasks((prevTasks) =>
-          prevTasks.map((task) => (task.assignedTo === user.id ? { ...task, assignedTo: null } : task)),
-        )
-        localStorage.setItem(`${TASK_CLEANUP_KEY}_${user.id}`, now.toString())
+      if (!data) {
+        console.log("No tasks found")
+        setTasks([])
+        return
       }
+
+      const convertedTasks = data.map(convertDatabaseTask)
+      setTasks(convertedTasks)
+    } catch (error) {
+      console.error("Error loading tasks:", error)
     }
-
-    checkAndCleanTasks()
-    // Verificar cada hora si han pasado 24 horas desde la última limpieza
-    const interval = setInterval(checkAndCleanTasks, 1000 * 60 * 60)
-    return () => clearInterval(interval)
-  }, [user?.id])
-
-  // Guardar tareas en localStorage cuando cambien
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks))
-  }, [tasks])
-
-  const availableTasks = tasks.filter((task) => task.assignedTo === null)
-  const assignedTasks = tasks.filter((task) => task.assignedTo !== null)
-
-  const addTask = (taskData: Omit<Task, "id" | "createdAt">) => {
-    const newTask: Task = {
-      ...taskData,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-    }
-    setTasks((prev) => [...prev, newTask])
   }
 
-  const assignTask = (taskId: number, userId: string | undefined) => {
+  // Cargar datos al iniciar
+  useEffect(() => {
+    loadTasks()
+  }, [])
+
+  const availableTasks = tasks.filter((task) => task.assignedTo === null && task.status === "pendiente")
+  const assignedTasks = tasks.filter((task) => task.assignedTo !== null && task.status === "pendiente")
+  const completedTasks = tasks.filter((task) => task.status === "completada")
+
+  const addTask = async (taskData: Omit<Task, "id" | "createdAt" | "status">): Promise<void> => {
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert([
+          {
+            title: taskData.title,
+            description: taskData.description,
+            link: taskData.link,
+            priority: taskData.priority,
+            created_by: taskData.createdBy,
+            assigned_to: taskData.assignedTo,
+            last_assigned_at: taskData.assignedTo ? new Date().toISOString() : null,
+            status: "pendiente",
+          },
+        ])
+        .select()
+        .single()
+
+      if (error) {
+        console.error("Error adding task:", error)
+        return
+      }
+
+      const newTask = convertDatabaseTask(data)
+      setTasks((prev) => [newTask, ...prev])
+    } catch (error) {
+      console.error("Error adding task:", error)
+    }
+  }
+
+  const assignTask = async (taskId: number, userId: string | undefined): Promise<void> => {
     if (!userId) return
 
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, assignedTo: userId, lastAssignedAt: new Date().toISOString() } : task,
-      ),
-    )
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          assigned_to: userId,
+          last_assigned_at: new Date().toISOString(),
+        })
+        .eq("id", taskId)
+
+      if (error) {
+        console.error("Error assigning task:", error)
+        return
+      }
+
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? { ...task, assignedTo: userId, lastAssignedAt: new Date().toISOString() } : task,
+        ),
+      )
+    } catch (error) {
+      console.error("Error assigning task:", error)
+    }
   }
 
-  const unassignTask = (taskId: number) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, assignedTo: null } : task)))
+  const unassignTask = async (taskId: number): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          assigned_to: null,
+          last_assigned_at: null,
+        })
+        .eq("id", taskId)
+
+      if (error) {
+        console.error("Error unassigning task:", error)
+        return
+      }
+
+      setTasks((prev) =>
+        prev.map((task) => (task.id === taskId ? { ...task, assignedTo: null, lastAssignedAt: null } : task)),
+      )
+    } catch (error) {
+      console.error("Error unassigning task:", error)
+    }
   }
 
-  const deleteTask = (taskId: number) => {
-    setTasks((prev) => prev.filter((task) => task.id !== taskId))
+  const completeTask = async (taskId: number): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          status: "completada",
+        })
+        .eq("id", taskId)
+
+      if (error) {
+        console.error("Error completing task:", error)
+        return
+      }
+
+      setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, status: "completada" } : task)))
+    } catch (error) {
+      console.error("Error completing task:", error)
+    }
   }
 
-  const clearAssignedTasks = () => {
+  const reopenTask = async (taskId: number): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          status: "pendiente",
+        })
+        .eq("id", taskId)
+
+      if (error) {
+        console.error("Error reopening task:", error)
+        return
+      }
+
+      setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, status: "pendiente" } : task)))
+    } catch (error) {
+      console.error("Error reopening task:", error)
+    }
+  }
+
+  const deleteTask = async (taskId: number): Promise<void> => {
+    try {
+      const { error } = await supabase.from("tasks").delete().eq("id", taskId)
+
+      if (error) {
+        console.error("Error deleting task:", error)
+        return
+      }
+
+      setTasks((prev) => prev.filter((task) => task.id !== taskId))
+    } catch (error) {
+      console.error("Error deleting task:", error)
+    }
+  }
+
+  const clearAssignedTasks = async (): Promise<void> => {
     if (!user?.id) return
 
-    setTasks((prev) => prev.map((task) => (task.assignedTo === user.id ? { ...task, assignedTo: null } : task)))
-    // Actualizar el timestamp de limpieza
-    localStorage.setItem(`${TASK_CLEANUP_KEY}_${user.id}`, new Date().getTime().toString())
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          assigned_to: null,
+          last_assigned_at: null,
+        })
+        .eq("assigned_to", user.id)
+        .eq("status", "pendiente")
+
+      if (error) {
+        console.error("Error clearing assigned tasks:", error)
+        return
+      }
+
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.assignedTo === user.id && task.status === "pendiente"
+            ? { ...task, assignedTo: null, lastAssignedAt: null }
+            : task,
+        ),
+      )
+    } catch (error) {
+      console.error("Error clearing assigned tasks:", error)
+    }
+  }
+
+  const refreshTasks = async (): Promise<void> => {
+    await loadTasks()
   }
 
   return (
@@ -158,11 +246,15 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       value={{
         availableTasks,
         assignedTasks,
+        completedTasks,
         addTask,
         assignTask,
         unassignTask,
         deleteTask,
+        completeTask,
+        reopenTask,
         clearAssignedTasks,
+        refreshTasks,
       }}
     >
       {children}

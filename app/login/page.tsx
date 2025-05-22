@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   // Redirigir si ya está autenticado
   useEffect(() => {
@@ -26,17 +27,31 @@ export default function LoginPage() {
     }
   }, [status, router])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) {
       setError("Por favor, ingresa tu email y contraseña")
       return
     }
 
-    const success = login(email, password)
-    if (!success) {
-      setError("Email o contraseña incorrectos")
+    setIsLoading(true)
+    try {
+      const success = await login(email, password)
+      if (!success) {
+        setError("Email o contraseña incorrectos")
+      }
+    } catch (error) {
+      console.error("Login error:", error)
+      setError("Error al iniciar sesión. Inténtalo de nuevo.")
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  // Mostrar credenciales de administrador para facilitar el inicio de sesión
+  const adminCredentials = {
+    email: "simonsantamaria.cv@gmail.com",
+    password: "Bianca1905",
   }
 
   if (status === "loading") {
@@ -93,9 +108,28 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" className="w-full">
-              Iniciar sesión
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
             </Button>
+
+            {/* Mostrar credenciales de administrador */}
+            <div className="mt-6 p-3 bg-gray-100 dark:bg-gray-800 rounded-md">
+              <p className="text-sm font-medium mb-2">Credenciales de administrador:</p>
+              <p className="text-xs">Email: {adminCredentials.email}</p>
+              <p className="text-xs">Contraseña: {adminCredentials.password}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full text-xs"
+                onClick={() => {
+                  setEmail(adminCredentials.email)
+                  setPassword(adminCredentials.password)
+                }}
+              >
+                Usar credenciales de administrador
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
